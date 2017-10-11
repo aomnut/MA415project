@@ -1,0 +1,472 @@
+---
+title: "MA415/MA615 EDA Project Report"
+author: "Sijie Shan, Nutthakorn Intharacha, Vala Rahmani, Ran Tao, Yuan Yuan."
+date: "October 7, 2017"
+header-includes:
+   - \setlength\parindent{24pt}
+output: pdf_document
+---
+
+```{r Script Overview, include = FALSE, eval = FALSE}
+# The script is broken down into several sections:
+#    a) set up global variables and prepare packages
+#    b) download and import data files    # OK no download anymore.
+#    c) normalize data, store final tables, clean up
+#    d) visualize data, store final graphs, clean up
+#    e) assemble final output into a pdf file
+```
+
+
+
+```{r Set up Environment, include = FALSE}
+
+# Set up global variables
+knitr::opts_chunk$set(echo = FALSE)       # No code
+knitr::opts_chunk$set(message = FALSE)    # No messages
+knitr::opts_chunk$set(warning = FALSE)    # No warnings
+options(digits = 2)                       # 2 decimals
+options(repos = "http://cran.us.r-project.org")
+
+# Prepare packages
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load("dplyr", "ggplot2", "kableExtra", "knitr", "pander",
+               "tibble","tidyr", "readxl", "reshape2")
+```
+
+
+
+```{r Import Data, include = FALSE}
+
+# 
+# This part seems unstable as it works on some people's computers, 
+# but not on others'. I managed to have users download data files instead
+# of having R do it.
+#
+# Download housing unit type data
+# download.file(
+#   "https://www.eia.gov/consumption/residential/data/2015/hc/hc3.1.xlsx",
+#   "unit.xlsx", quiet = TRUE, mode = "wb")
+# 
+# # Download household income data
+# download.file(
+#   "https://www.eia.gov/consumption/residential/data/2015/hc/hc3.5.xlsx",
+#   "income.xlsx", quiet = TRUE, mode = "wb")
+# 
+# # Download climate region data
+# download.file(
+#   "https://www.eia.gov/consumption/residential/data/2015/hc/hc3.6.xlsx",
+#   "climate.xlsx", quiet = TRUE, mode = "wb")
+
+# Import and store data
+t_unit_0    <- read_excel("unit.xlsx", sheet = "data",
+                          range = "A115:G121", col_names = FALSE,
+                          col_types = "text")
+
+t_income_0  <- read_excel("income.xlsx", sheet = "data",
+                          range = "A115:J121", col_names = FALSE,
+                          col_types = "text")
+
+t_climate_0 <- read_excel("climate.xlsx", sheet = "data",
+                          range = "A115:G121", col_names = FALSE,
+                          col_types = "text")
+```
+
+
+
+```{r Normalize Data Part I, include = FALSE}
+
+# Copy data for future manipulation
+t_unit_1    <- t_unit_0
+t_income_1  <- t_income_0
+t_climate_1 <- t_climate_0
+
+# Rename columns using convention to be used in later manipulation
+colnames(t_unit_1)    <- c("f_type", "ttl_cnt", "sgl_de",
+                           "sgl_at", "apt_2_4", "apt_5", "mob")
+
+colnames(t_income_1)  <- c("f_type", "ttl_cnt", "20_less", "20_40",
+                           "40_60", "60_80", "80_100", "100_120",
+                           "120_140", "140_more")
+
+colnames(t_climate_1) <- c("f_type", "ttl_cnt", "very_cold",
+                           "m_humid", "m_dry", "hot_humid", "mar")
+
+# Remove unnecessary columns
+t_unit_2    <- within(t_unit_1, rm(ttl_cnt))
+t_income_2  <- within(t_income_1, rm(ttl_cnt))
+t_climate_2 <- within(t_climate_1, rm(ttl_cnt))
+
+# Copy data for future manipulation
+t_unit_3    <- t_unit_2
+t_income_3  <- t_income_2
+t_climate_3 <- t_climate_2
+
+# Coerce fridge type to factor
+t_unit_3$f_type    <- as.factor(t_unit_3$f_type)
+t_income_3$f_type  <- as.factor(t_income_3$f_type)
+t_climate_3$f_type <- as.factor(t_climate_3$f_type)
+  
+# Coerce other columns to numeric, missing data as NA
+t_unit_3[, 2:6]    <- sapply(t_unit_3[, 2:6], as.numeric)
+t_income_3[, 2:9]  <- sapply(t_income_3[, 2:9], as.numeric)
+t_climate_3[, 2:6] <- sapply(t_climate_3[, 2:6], as.numeric)
+
+# Copy data for future manipulation
+t_unit_4    <- t_unit_3
+t_income_4  <- t_income_3
+t_climate_4 <- t_climate_3
+
+# Update column names before melt
+colnames(t_unit_4)    <- c("Fridge Type", "Single-family detached",
+                           "Single-family attached",
+                           "Apartment (2- to 4-unit)",
+                           "Apartment (5 or more unit)",
+                           "Mobile home")
+
+colnames(t_income_4)  <- c("Fridge Type", "Less than $20,000",
+                           "$20,000 to $39,999", "$40,000 to $59,999",
+                           "$60,000 to $79,999", "$80,000 to $99,999",
+                           "$100,000 to $119,999",
+                           "$120,000 to $139,999",
+                           "$140,000 or more")
+
+colnames(t_climate_4) <- c("Fridge Type", "Very cold/cold",
+                           "Mixed-humid", "Mixed-dry/Hot-dry",
+                           "Hot-humid", "Marine")
+
+# Melt data to standardized format
+t_unit_5    <- as_tibble(melt(t_unit_4, id = 1))
+t_income_5  <- as_tibble(melt(t_income_4, id = 1))
+t_climate_5 <- as_tibble(melt(t_climate_4, id = 1))
+   
+# Copy data for future manipulation
+t_unit_6    <- t_unit_5
+t_income_6  <- t_income_5
+t_climate_6 <- t_climate_5
+
+# Update column names
+names(t_unit_6)[2]    <- "Unit Type"
+names(t_income_6)[2]  <- "Income"
+names(t_climate_6)[2] <- "Climate Region"
+
+# Update column names
+names(t_unit_6)[3]    <- "Frequency (million)"
+names(t_income_6)[3]  <- "Frequency (million)"
+names(t_climate_6)[3] <- "Frequency (million)"
+
+# Store results
+p_unit    <- t_unit_6
+p_income  <- t_income_6
+p_climate <- t_climate_6
+
+# Some additional manipulation to the climate data
+# Calculate percentage by climate region
+t_climate_pct <- aggregate(p_climate$`Frequency (million)`, 
+                           by = list(category = p_climate$`Climate Region`),
+                           FUN = sum, na.rm = TRUE)
+
+# Update column names
+names(t_climate_pct)[1] <- "Climate Region"
+names(t_climate_pct)[2] <- "Frequency (million)"
+
+# Merge tables
+t_climate_pct_2 <- merge(x = p_climate, y = t_climate_pct,
+                       by = "Climate Region", all = TRUE)
+
+# Update column names
+names(t_climate_pct_2)[3] <- "Frequency (million)"
+names(t_climate_pct_2)[4] <- "Frequency in Region (million)"
+
+# Calculate percentage
+t_climate_pct_2$Percentage <- 100*(t_climate_pct_2$`Frequency (million)`
+                                 /t_climate_pct_2$`Frequency in Region (million)`)
+
+# Store results
+p_climate_pct <- t_climate_pct_2
+
+# Remove temporary variables
+rm(list = ls(pattern = "^t_"))
+```
+
+
+
+```{r Visualize Data}
+knitr::opts_chunk$set(fig.width = 5.5, fig.height = 3.5, cex.lab = 0.5,
+                      cex.axis = 0.5, cex.main = 0.5, cex.sub=0.5)
+
+# Total frequency of fridges by unit types
+g_unit <-  ggplot(p_unit, aes(x = `Unit Type`, y =`Frequency (million)`)) +
+           geom_col(aes(fill = `Fridge Type`)) +
+           theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+           labs(title = "Use of Refrigerators by Unit Types")
+
+# Total frequency of fridges by climate regions
+g_climate <- ggplot(p_climate, aes(x = `Climate Region`, 
+                                   y = `Frequency (million)`,
+                                   group = `Fridge Type`)) +
+             geom_col(aes(fill = `Fridge Type`)) +
+             theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+             labs(title = "Use of Refrigerators by Climate Regions")
+
+# Percentage of fridges by climate regions
+g_climate_pct <- ggplot(p_climate_pct, aes(x = `Climate Region`, y = Percentage)) +
+                 geom_col(aes(fill = `Fridge Type`)) +
+                 labs(title = "Percentage Use Climate Regions", y = "Percentage") +
+                 coord_flip()
+
+# Total frequency of fridges by income levels
+g_income  <- ggplot(p_income, aes(x = Income, y = `Frequency (million)`)) +
+             geom_col(aes(fill =`Fridge Type`)) + 
+             theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+             labs(title = "Use of Refrigerators by Income Levels")
+
+```
+
+
+
+```{r Normalize Part II, include = FALSE}
+
+# Download fridge growth time series data
+# download.file(
+#   "https://github.com/cjshan0417/MA415/blob/master/fgrowth.csv",
+#   "fgrowth.csv", quiet = TRUE, mode = "wb")
+
+# Import and store data
+t_fgrth_0   <- read.csv("fgrowth.csv", header = TRUE, check.names = FALSE)
+
+# Copy data for future manipulation
+t_fgrth_1   <- t_fgrth_0
+
+# Rename columns using convention
+colnames(t_fgrth_1)   <- c("f_num", "2015", "2009", "2005",
+                           "2001", "1997", "1993")
+
+# Copy data for future manipulation
+t_fgrth_2   <- t_fgrth_1
+
+# Coerce fridge number to factor
+t_fgrth_2$f_num    <- as.factor(t_fgrth_2$f_num)
+
+# Coerce other columns to numeric, missing data as NA
+t_fgrth_2[, 2:7]   <- sapply(t_fgrth_2[, 2:7], as.numeric)
+
+# Copy data for future manipulation
+t_fgrth_3   <- t_fgrth_2
+
+# Update column names before melt
+colnames(t_fgrth_3)   <- c("Number of Refrigerators", "2015", "2009",
+                           "2005", "2001", "1997", "1993")
+
+# Melt data to standardized format
+t_fgrth_4  <- as_tibble(melt(t_fgrth_3, id = 1))
+
+# Update column names
+names(t_fgrth_4)[2]   <- "Year"
+names(t_fgrth_4)[3]   <- "Frequency (million)"
+
+# Copy data for future manipulation
+p_fgrth <- t_fgrth_4
+
+# Some additional manipulation
+# Copy data for future manipulation
+t_fgrth_5 <- p_fgrth 
+
+# Split fridge growth table
+t_fgrth_5$Year <- as.numeric(as.character(t_fgrth_5$Year))
+t_fgrth_all  <- filter(t_fgrth_5, `Number of Refrigerators` == "Use a Fridge\t")
+t_fgrth_one  <- filter(t_fgrth_5, `Number of Refrigerators` == "One")
+t_fgrth_more <- filter(t_fgrth_5, `Number of Refrigerators` == "Two or More")
+
+# Update column names
+names(t_fgrth_all)[2]  <- "End Year"
+names(t_fgrth_one)[2]  <- "End Year"
+names(t_fgrth_more)[2] <- "End Year"
+
+# Add a start year column
+t_fgrth_all  <- mutate(t_fgrth_all,
+                       `Start Year` = c(`End Year`[-1] + 1, NA))
+
+t_fgrth_one  <- mutate(t_fgrth_one,
+                       `Start Year` = c(`End Year`[-1] + 1, NA))
+
+t_fgrth_more <- mutate(t_fgrth_more,
+                       `Start Year` = c(`End Year`[-1] + 1, NA))
+
+# Add a years in period column
+t_fgrth_all  <- mutate(t_fgrth_all,
+                       `Years in Period` = `End Year` - `Start Year` + 1)
+
+t_fgrth_one  <- mutate(t_fgrth_one,
+                       `Years in Period` = `End Year` - `Start Year` + 1)
+
+t_fgrth_more <- mutate(t_fgrth_more,
+                       `Years in Period` = `End Year` - `Start Year` + 1)
+
+# Add a time period column
+t_fgrth_all  <- mutate(t_fgrth_all,
+                      `Year Period` = paste(as.character(`Start Year`),
+                                            "-",
+                                            as.character(`End Year`)))
+
+t_fgrth_one  <- mutate(t_fgrth_one,
+                      `Year Period` = paste(as.character(`Start Year`),
+                                            "-",
+                                            as.character(`End Year`)))
+
+t_fgrth_more <- mutate(t_fgrth_more,
+                       `Year Period` = paste(as.character(`Start Year`),
+                                             "-",
+                                             as.character(`End Year`)))
+
+# Add a frequency change column
+t_fgrth_all  <- mutate(t_fgrth_all,
+                       `Frequency Change` =
+                         `Frequency (million)` -c(`Frequency (million)`[-1], NA))
+
+t_fgrth_one  <- mutate(t_fgrth_one,
+                       `Frequency Change` =
+                         `Frequency (million)` - c(`Frequency (million)`[-1], NA))
+
+t_fgrth_more <- mutate(t_fgrth_more,
+                       `Frequency Change` =
+                         `Frequency (million)` - c(`Frequency (million)`[-1], NA))
+
+# Add a percentage chagne column
+t_fgrth_all <- mutate(t_fgrth_all,
+                      `Percentage Change` =
+                        100 * (`Frequency Change`/`Frequency (million)`[-1]))
+
+t_fgrth_one <- mutate(t_fgrth_one,
+                      `Percentage Change` =
+                        100 * (`Frequency Change`/`Frequency (million)`[-1]))
+
+t_fgrth_more <- mutate(t_fgrth_more,
+                      `Percentage Change` =
+                        100 * (`Frequency Change`/`Frequency (million)`[-1]))
+
+# Add a yearly percentage change column
+t_fgrth_all <- mutate(t_fgrth_all,
+                      `Yearly Percentage Change` =
+                        `Percentage Change` / `Years in Period`)
+
+t_fgrth_one <- mutate(t_fgrth_one,
+                      `Yearly Percentage Change` =
+                        `Percentage Change` / `Years in Period`)
+
+t_fgrth_more <- mutate(t_fgrth_more,
+                      `Yearly Percentage Change` =
+                        `Percentage Change` / `Years in Period`)
+
+# Select needed columns
+t_fgrth_all_1  <- select(t_fgrth_all,  `Year Period`,
+                         `Frequency (million)`, `Frequency Change`,
+                         `Percentage Change`, `Yearly Percentage Change`)
+
+t_fgrth_one_1  <- select(t_fgrth_one,  `Year Period`,
+                         `Frequency (million)`, `Frequency Change`,
+                         `Percentage Change`,`Yearly Percentage Change`)
+
+t_fgrth_more_1 <- select(t_fgrth_more,  `Year Period`,
+                         `Frequency (million)`, `Frequency Change`,
+                         `Percentage Change`, `Yearly Percentage Change`)
+
+# Store results, columns with NA are removed
+p_fgrth_all  <- t_fgrth_all_1[complete.cases(t_fgrth_all_1), ]
+p_fgrth_one  <- t_fgrth_one_1[complete.cases(t_fgrth_one_1), ]
+p_fgrth_more <- t_fgrth_more_1[complete.cases(t_fgrth_more_1), ]
+
+# Remove temporary variables
+rm(list = ls(pattern = "^t_"))
+```
+
+\section*{Introduction}
+
+  The goal of the project is to provide insights on planning and marketing refrigerators in the US. Our group has decided to visualize and analyze how income levels, house types, and climate regions affect people's choice of refrigerators. The idea behind this project is to determine how these factors are correlated with refrigerator types.
+
+  The data we used comes from U. S. Energy Information Administration, and most of the data sets used were from 2015. However, we did pull data across different years when analyzing over growth of the refrigerator market. When importing data, we omitted two types of statistics that were marked missing as either 'Q'[^1] or 'N.'[^2] by reporters.
+
+  [^1]: Data withheld because either the Relative Standard Error (RSE) was greater than 50% or fewer than 10 cases responded.
+
+  [^2]: No cases responded.
+
+\section*{Growth of the Refrigerator Market}
+
+**1. Overall Growth of the Market** 
+```{r Overall Growth Table}
+kable(p_fgrth_all,
+      caption = 'U.S. Families with Refrigerators 1994-2015 (millions)',
+      format = "latex", booktabs = T) %>%
+  kable_styling(font_size = 7, latex_options = c("striped", "hold_position"))
+```
+  In this section, we will look at the growth of the refrigerator market from 1994 to 2015. Looking at the table that was derived from the data, we can observe that the overall growth of the market has been relatively slow but steady over the past 20 years. The annual growth rate of US families with refrigerators ranges between 0.5 - 1.8%. For any new investor to the refrigerator market, it is important to understand growth in sales can be achieved by growth in the market share, not by the growth of the refrigerator market itself. This is mostly because refrigerators tend to have long lifetime, and consumers do not purchase a new refrigerator very often. 
+
+**2. U.S. Families with one Refrigerator** 
+```{r Single Fridge Table}
+kable(p_fgrth_one,
+      caption = 'U.S. Families with one Refrigerator 1994-2015 (millions)',
+      format = "latex", booktabs = T) %>%
+  kable_styling(font_size = 7, latex_options = c("striped", "hold_position"))
+
+```
+  In the data compiled for the purchase of one fridge, we can see that the volatility of the market has been higher over the years than that of the overall market. This should not be very concerning as we can see that the range is between -1% and 1.2% and numbers are not very extreme.
+
+**3. U.S. Families with two or more Refrigerators** 
+```{r Two or More Fridges Table}
+kable(p_fgrth_more,
+      caption = 'U.S. Families with two or more Refrigerator 1994-2015 (millions)',
+      format = "latex", booktabs = T) %>%
+  kable_styling(font_size = 7, latex_options = c("striped", "hold_position"))
+```
+  If our investor is interested in a faster-growing market, probably market for the second or more fridges is a hot market to enter. Over the past 20 years, the number of people who own two or more fridges has been constantly growing. Indeed its growth has been higher than that of both overall, and single-use fridge market between 1-8% per year.
+
+\section*{Income Level Anlaysis}
+
+```{r Income Analysis Graph, fig.align = 'center'}
+g_income
+```
+
+  As we can see from the plot, popularity of each type of refrigerators varies greatly among people with different income levels. It seems that people with different levels of income do not favor the same type of refrigerators.
+  
+  It is worth noticing that two-door refrigerators are used over 80% of the US families in the sample. Moreover, the two-door refrigerators are welcomed by almost all people across different income levels. In the two-door refrigerator family, the one with top freezer is more popular among low income level people, while its brother, the two-door refrigerator with side-by-side freezer, is usually seen in families with high income. A possible explanation is that a refrigerator with top freezer is usually priced lower than one with side-by-side freezer, making the latter less affordable than the former.
+
+  On the contrary, one-door refrigerators are the minorities in the fridge family. The reason could be that a one-door refrigerator has smaller capacity and fewer functions compared to other refrigerators. However, such characteristic also makes one-door refrigerators more economical to pruchase and own - they are relatively popular among people with less than 40,000 dollars income. Three-or-more-door refrigerators, by contrast, are desired by families with income over 100,000 dollars, as three-or-more-door refrigerators usually provide more functions and are more expensive that other types of refrigerators.
+
+  To wrap up our discussion on income levels, we suggest investors to 1) focus on marketing and selling two-door refrigerators, as they are the major refrigerators used by people across all the income levels; 2) Target potential clients with income over 100,000 dollars to sell three-or-more-door refrigerators. 3) Promote two-door refrigerators with bottom freezer among people with income over 100,000 dollars.
+  
+\section*{Climate Region Analysis}
+
+    In this part, we will be looking at the sales of refrigerator across climate regions in the United States. There are two figures that reveal interesting sales information.
+
+```{r Climate Region Analysis Graph 1, fig.align = 'center'}
+g_climate
+```
+
+  From the figure above, it is quite surprising that the sales of refrigerators in cold/very cold region is about twice of that in the hot region, regardless of refrigerator types. Also, in humid regions, quite a number of households do not use a refrigerator, while in cold/very cold regions, 99.99% of households own at least one refrigerator. It is important to explore the reason behind this phenomenon as we will better understand how climate affects people's preference of refrigerators. A possible explanation is as follows:
+
+  1) In very cold regions, temperature in refrigerators is even higher than the temperature outside, so households may find it necessary to store their food supply in refrigerators.
+
+  2) In general, high-GDP states usually are located in cold regions, such as MA, IL, NY, while the lower-GDP ones are usually in the hot, southern part of the United States. If we look at local purchasing power by states, most of the upper states tend to have higher buying power, thereby increasing sales of the refrigerators.
+
+  The second figure below compares percentage of refrigerators used across different climate types. It is evident that the two-door refrigerator with top freezer is the most popular, as it appears in about half of the families in all climate regions. The second most popular one is the two-door refrigerator, with side-by-side freezer, followed by the two-door refrigerator with bottom freezer. This two-door refrigerator family, again, takes over 80% of refrigerator market, for reasons we have elaborated in the previous section.
+  
+```{r Climate Region Analysis Graph 2, fig.align = 'center'}
+g_climate_pct
+```
+
+\section*{Unit Type Analysis}
+
+  According to the visualization, people with different housing unit types prefer different types of refrigerators.
+
+```{r Unit Type Analysis Graph, fig.align = 'center'}
+g_unit
+```
+    
+  Of all versions of refrigerators, two-door refrigerator with top freezer, two-door refrigerator with side-by-side freezer, and one-door refrigerator are widely used by US families with all housing types. 
+    
+  It can be seen that two-door refrigerators with top freezer are relatively popular among all the housing types, since this style of refrigerators take up less space and offer sufficient volume to households. On the other side, the two-door refrigerators with side-by-side freezers is popular among families with detached single houses, which is typically more expensive than attached house and apartments. Therefore, we infer that people who own a detached single house are wealthier and have more budget to buy a two-door refrigerator with side-by-side freezer. 
+    
+  Two-door refrigerators with bottom freezer are also mostly used by families with single, detached houses. Compared to other types of refrigerators, two-door refrigerators with bottom freezer are more recent designs - which means they work with higher efficiency than others. Also, two-door refrigerators with bottom freezer are expensive compared to others, so the majority of the buyers of the two-door, bottom-freezer refrigerator are people with more budget, which in our study are the families with single, detached houses. Following the same logic, we can immediately see why refrigerators with three or more doors are mainly only used by the same group of people.
+
+  The one-door refrigerator is typical among people with single, detached houses and apartments with 5 or more units. People with single, detached houses might be using a one-door refrigerator as their second refrigerator. People who own apartments with 5 or more units could be landlords and they purchase one-door refrigerator as a standard appliance for their tenants.
+
+  From a marketing perspective, two-door refrigerators are what investors want to massively produce. Investors should generally target the two-door refrigerator with top freezer to all customers, regardless of their housing types. Another possible advice is to sell two-door refrigerators with side-by-side freezer or with bottom freezer to customers living in single, detached houses. Three-door refrigerators can be offered as a customized choice, because only a small portion of families tend to purchase them. Last, although relatively small, the market for one-door refrigerators still exists. Investors can promote one-door refrigerators to landlords or people who are looking for a second freezer. 
