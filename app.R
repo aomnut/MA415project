@@ -1,13 +1,6 @@
 library(shiny)
 library(ggplot2)
 
-sscore_manc <- read.csv("sscore_manc.csv")
-sscore_mancp- read.csv("sscore_mancp.csv")
-sscore_manu <- read.csv("sscore_manu.csv")
-sscore_manup <- read.csv("sscore_manup.csv")
-sumderby <- read.csv("sumderby.csv")
-derby <- read.csv("derby.csv")
-ttesttable <- read.csv("testtable.csv")
 
 
 ui <- shinyUI(fluidPage(
