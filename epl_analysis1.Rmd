@@ -1,0 +1,553 @@
+---
+title: "Derby"
+author: "Nutthakorn Intharacha"
+date: "December 17, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r}
+# knitr to generate report
+library(knitr)
+
+# for twitter API
+library(httr)
+library(httpuv)
+library(devtools)
+#install_github("geoffjentry/twitteR")
+library(twitteR)
+
+# for word cloud
+library(SnowballC)
+library(tm)
+library(wordcloud)
+library(memoise)
+
+# for data parsing
+library(stringr)
+library(plyr)
+
+# for plots and tables
+library(ggplot2)
+library(pander)
+```
+## Authorization
+
+```{r, eval=FALSE}
+# authorization
+
+api_key <- 	"bIaminvDsx2yzAn1dGn9DziLl"
+api_secret <- "hVvD4RVxQHeUKw3vAT7tD3kVfJNmb2Fu87dAGEswE5Hn96PlCB"
+token <- "337039545-uIbRcuoAuGOjOHY7VA7C9U7lK9BMlC5FnYC4uwle"
+token_secret <- "SkGp7BDWlGzi0MLsYIg6T47ix4BD797rrwnK8awjhF50H"
+setup_twitter_oauth(api_key, api_secret, token, token_secret)
+
+
+cred <- OAuthFactory$new(consumerKey='bIaminvDsx2yzAn1dGn9DziLl', consumerSecret='hVvD4RVxQHeUKw3vAT7tD3kVfJNmb2Fu87dAGEswE5Hn96PlCB',requestURL='https://api.twitter.com/oauth/request_token',accessURL='https://api.twitter.com/oauth/access_token',authURL='https://api.twitter.com/oauth/authorize')
+
+cred$handshake(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl"))
+
+registerTwitterOAuth(cred)
+                     
+```
+
+## Prepare Data keywords
+```{r}
+# make list 
+manu <- list("mufc","manchester united", "reddevil", "manu", "ggmu")
+manc <- list("mancity","manchestercity","manchesterisblue","thecitizens","mcfc")
+manup <- list("pogba", "zlatan", "lukaku", "martial", "matic", "DeGea", "rashford","beckham", "rooney","lingard","herrera")
+mancp <- list("aguero","debruyne","gabriel","sane","sterling","silva","toure","fernandinho","otamendi","kompany")
+
+#prepare vectors for keyword 
+manu1 <- c("mufc","manchester united", "reddevil", "manu", "ggmu")
+manc1 <- c("mancity","manchestercity","manchesterisblue","thecitizens","mcfc")
+manup1 <- c("pogba", "zlatan", "lukaku", "martial", "matic", "DeGea", "rashford","beckham", "rooney","lingard","herrera")
+mancp1 <- c("aguero","debruyne","gabriel","sane","sterling","silva","toure","fernandinho","otamendi","kompany")
+
+```
+
+# Data collecting and Cleaning 
+## Function for Data Collecting and Cleaning
+
+```{r}
+# function get tweet
+epltweet <- function(team, n = 1000) {
+  library(twitteR)
+  
+  TS <- paste0("@", team, " OR ", "#", team)
+  
+  gettw <- searchTwitter(TS, n = n, since = format(Sys.Date()-7), lang="en")
+  
+  if(length(gettw)>0) {
+    gettw <- strip_retweets(gettw, strip_manual = TRUE, strip_mt = TRUE)
+    tweetdf <- twListToDF(gettw)
+    out <- cbind(team, tweetdf)
+  } else {
+    out <- structure(list(team = structure(integer(0), .Label = c(team), class = "factor"),
+                          text = character(0), 
+                          favorited = logical(0), 
+                          favoriteCount = numeric(0), 
+                          replyToSN = character(0), 
+                          created = structure(numeric(0), class = c("POSIXct", "POSIXt"), tzone = "UTC"),
+                          truncated = logical(0), replyToSID = character(0), 
+                          id = character(0), 
+                          replyToUID = character(0), 
+                          statusSource = character(0), 
+                          screenName = character(0), 
+                          retweetCount = numeric(0), 
+                          isRetweet = logical(0), 
+                          retweeted = logical(0), 
+                          longitude = character(0), 
+                          latitude = character(0)), 
+                     .Names = c("team", "text", "favorited", "favoriteCount", "replyToSN", "created",  "truncated", "replyToSID", "id", "replyToUID", "statusSource", "screenName", "retweetCount", "isRetweet", "retweeted", "longitude","latitude"), row.names = integer(0), class = "data.frame")
+  }
+  
+  return(out)
+}
+
+
+
+
+cleanTweet <- function(tweet, leaveout) {
+  thistweet <- unlist(str_split(tweet, pattern = " "))
+  # remove all non-alphanumeric characters
+  thistweet <- str_replace_all(thistweet, "[^[:alnum:]]", " ")
+  # convert to lowercase 
+  thistweet <- tolower(thistweet)
+  # remove hastag as it swamps other words
+  thistweet <- thistweet[!grepl(leaveout, thistweet)]
+  # remove links
+  thistweet <- thistweet[!grepl("http", thistweet)]
+  # remove 'amp' which keeps showing up
+  thistweet <- thistweet[!grepl("amp", thistweet)]
+  # recombine and return
+  paste(thistweet, collapse = " ")
+}
+```
+
+## implementation
+
+
+```{r}
+
+### Run code on Team ManUnited and Team ManCity 
+tweets_by_manu <- ldply(manu, function(team) epltweet(team, n=1000))
+tweets_by_manc <- ldply(manc, function(team) epltweet(team, n=1000))
+str(tweets_by_manu)
+str(tweets_by_manc)
+# clean tweet text
+tweets_by_manu <- ddply(tweets_by_manu, .(id), mutate, text_clean = cleanTweet(text, leaveout = team[1]))
+tweets_by_manc <- ddply(tweets_by_manc, .(id), mutate, text_clean = cleanTweet(text, leaveout = team[1]))
+# drop 'text' 
+tweets_by_manu <- subset(tweets_by_manu, , - text)
+tweets_by_manc <- subset(tweets_by_manc, , - text)
+
+
+### Run code on Man United players
+tweets_by_manup <- ldply(manup, function(team) epltweet(team, n=1000))
+str(tweets_by_manup)
+# clean tweet text
+tweets_by_manup <- ddply(tweets_by_manup, .(id), mutate, text_clean = cleanTweet(text, leaveout = team[1]))
+# drop 'text' 
+tweets_by_manup <- subset(tweets_by_manup, , - text)
+
+
+### Run code  onMan City players
+tweets_by_mancp <- ldply(mancp, function(team) epltweet(team, n=1000))
+str(tweets_by_mancp)
+# clean tweet text
+tweets_by_mancp <- ddply(tweets_by_mancp, .(id), mutate, text_clean = cleanTweet(text, leaveout = team[1]))
+# drop 'text' 
+tweets_by_mancp <- subset(tweets_by_mancp, , - text)
+
+
+```
+
+
+# Sentiment Analysis
+
+## code for analysis
+
+```{r}
+pos.words <- scan("pos.txt", skip = 35, what = "character")
+neg.words <- scan("neg.txt", skip = 35, what = "character")
+
+
+# function for calculating scores
+function(text, pos.words, neg.words) {
+  word_list <- str_split(text, '\\s+')
+  words <- unlist(word_list)
+  pos.matches <- !is.na(match(words, pos.words))
+  neg.matches <- !is.na(match(words, neg.words))
+  score <- sum(pos.matches) - sum(neg.matches)
+  return(score)
+}
+
+```
+## Collecting and cleaning of individuals data
+
+```{r}
+## Man United players
+## assign score
+tweets_by_manup <- ddply(tweets_by_manup, .(id), mutate, 
+                        sscore = sentiment_score(text_clean, pos.words = pos.words, neg.words = neg.words),
+                        very_pos = as.numeric(sscore > 1),
+                        very_neg = as.numeric(sscore < -1))
+
+# ratio of positive (sscore > 1) to negative (sscore < -1) sentiment by hastag
+sscore_manup <- ddply(tweets_by_manup, 'team', summarize, 
+                     sscore_mean = mean(sscore),
+                     sscore_sd = sd(sscore),
+                     pos_count = sum(very_pos),
+                     neg_count = sum(very_neg))
+
+# overall sentiment score by hastag as ratio of very positive to very negative tweets
+sscore_manup <- mutate(sscore_manup, .(id), mutate,
+                      overall = round(100 * pos_count/(pos_count + neg_count)))
+
+sscore_manup <- mutate(sscore_manup, .(id), mutate,
+                      total = (pos_count + neg_count))
+
+
+colnames(sscore_manup) <- c("team","mean","sd","positive","negative","overall","total")
+
+
+
+
+
+### Man City players
+
+## assign score
+
+tweets_by_mancp <- ddply(tweets_by_mancp, .(id), mutate, 
+                         sscore = sentiment_score(text_clean, pos.words = pos.words, neg.words = neg.words),
+                         very_pos = as.numeric(sscore > 1),
+                         very_neg = as.numeric(sscore < -1))
+
+# ratio of positive (sscore > 1) to negative (sscore < -1) sentiment by hastag
+sscore_mancp <- ddply(tweets_by_mancp, 'team', summarize, 
+                      sscore_mean = mean(sscore),
+                      sscore_sd = sd(sscore),
+                      pos_count = sum(very_pos),
+                      neg_count = sum(very_neg))
+
+# overall sentiment score by hastag as ratio of very positive to very negative tweets
+sscore_mancp <- mutate(sscore_mancp, .(id), mutate,
+                       sscore_overall = round(100 * pos_count/(pos_count + neg_count)))
+
+sscore_mancp <- mutate(sscore_mancp, .(id), mutate,
+                      total = (pos_count + neg_count))
+
+colnames(sscore_mancp) <- c("team","mean","sd","positive","negative","overall","total")
+
+```
+
+## Colleting and cleaning Team data
+ 
+```{r}
+# Man United
+
+tweets_by_manu <- ddply(tweets_by_manu, .(id), mutate, 
+                         sscore = sentiment_score(text_clean, pos.words = pos.words, neg.words = neg.words),
+                         very_pos = as.numeric(sscore > 1),
+                         very_neg = as.numeric(sscore < -1))
+
+# ratio of positive (sscore > 1) to negative (sscore < -1) sentiment by hastag
+sscore_manu <- ddply(tweets_by_manu, 'team', summarize, 
+                         sscore_mean = mean(sscore),
+                         sscore_sd = sd(sscore),
+                         pos_count = sum(very_pos),
+                         neg_count = sum(very_neg))
+
+# overall sentiment score by hastag as ratio of very positive to very negative tweets
+sscore_manu <- mutate(sscore_manu, .(id), mutate,
+                          sscore_overall = round(100 * pos_count/(pos_count + neg_count)))
+
+
+#calculate total number of being tweet
+sscore_manu <- mutate(sscore_manu, .(id), mutate,
+                          total = (pos_count + neg_count))
+
+colnames(sscore_manu) <- c("team","mean","sd","positive","negative","overall","total")
+
+
+# Man City 
+
+tweets_by_manc <- ddply(tweets_by_manc, .(id), mutate, 
+                        sscore = sentiment_score(text_clean, pos.words = pos.words, neg.words = neg.words),
+                        very_pos = as.numeric(sscore > 1),
+                        very_neg = as.numeric(sscore < -1))
+#ratio of positive (sscore > 1) to negative (sscore < -1) sentiment by hastag
+sscore_manc <- ddply(tweets_by_manc, 'team', summarize, 
+                        sscore_mean = mean(sscore),
+                        sscore_sd = sd(sscore),
+                        pos_count = sum(very_pos),
+                        neg_count = sum(very_neg))
+
+# overall sentiment score by hastag as ratio of very positive to very negative tweets
+sscore_manc <- mutate(sscore_manc, .(id), mutate,
+                         sscore_overall = round(100 * pos_count/(pos_count + neg_count)))
+
+
+#calculate total number of being tweet
+sscore_manc <- mutate(sscore_manc, .(id), mutate,
+                          total = (pos_count + neg_count))
+colnames(sscore_manc) <- c("team","mean","sd","positive","negative","overall","total")
+
+
+
+```
+
+## make head to head table
+```{r}
+# prepare table
+
+sscore_manc_pos <- sscore_manc["overall"]
+sscore_manu_pos <- sscore_manu["overall"]
+
+derby <- data.frame(
+  class = c(rep("manutd", 5), rep("mancity", 5)),
+  team =c(manu1 ,manc1),
+  positive = c(sscore_manu$positive, sscore_manc$positive),
+  negative = c(sscore_manu$negative, sscore_manc$negative),
+  overall = c(sscore_manu_pos$overall, sscore_manc_pos$overall)
+)
+
+# summary head to head table
+
+manu.ttpos <- sum(sscore_manu$positive)
+manu.ttneg <- sum(sscore_manu$negative)
+manc.ttpos <- sum(sscore_manc$positive)
+manc.ttneg <- sum(sscore_manc$negative)
+
+sumderby <- data.frame(
+  team <- c("Manutd","Mancity"),
+  pos <- c(manu.ttpos,manc.ttpos),
+  neg <- c(manu.ttneg,manc.ttneg),
+  pct <- c(100*manu.ttpos/(manu.ttneg+manu.ttpos), 100*manc.ttpos/(manc.ttpos+manc.ttneg))
+)
+
+colnames(sumderby) <- c("team", "positive", "negative", "overall")
+
+
+```
+
+
+
+# Result from analysis
+
+## Individual
+```{r}
+
+
+# ManUtd players' barplot
+mup1 <- barplot(sscore_manup$positive, names.arg  = manup1, cex.names = 0.7, main = "Total Positive they are being tweeted")
+text(mup1, y =sscore_manup$positive, label=sscore_manup$positive, col="red",pos = 3, cex = 0.8)
+
+mup2 <- barplot(sscore_manup$negative, names.arg  = manup1, cex.names = 0.7,main = "Total Negative they are being tweeted")
+text(mup2, y =sscore_manup$negative, label=sscore_manup$negative, col="red",pos = 3, cex = 0.8)
+
+mup3 <- barplot(sscore_manup$total, names.arg  = manup1, cex.names = 0.7, main = "Total number of times they are being tweeted")
+text(mup3, y =sscore_manup$total, label=sscore_manup$total, col="red",pos = 3, cex = 0.8)
+
+
+mup4 <- barplot(sscore_manup$overall, names.arg  = manup1, cex.names = 0.7, main = "Relative percentage of tweet scores")
+text(mup4, y =sscore_manup$overall, label=sscore_manup$overall, col="red")
+pie(sscore_manup$positive,labels = manup1, radius = 1)
+pie(sscore_manup$negative,labels = manup1, radius = 1)
+pie(sscore_manup$total,labels = manup1, radius = 1)
+pie(sscore_manup$overall,labels = manup1, radius = 1)
+
+
+
+# mancity
+
+mcp1 <- barplot(sscore_mancp$positive, names.arg  = mancp1, cex.names = 0.7,main = "Total Positive they are being tweeted")
+text(mcp1, y =sscore_mancp$positive, label=sscore_mancp$positive, col="blue",pos = 3, cex = 0.8)
+
+mcp2 <- barplot(sscore_mancp$negative, names.arg  = mancp1, cex.names = 0.7,main = "Total Negative they are being tweeted")
+text(mcp2, y =sscore_mancp$negative, label=sscore_mancp$negative, col="blue",pos = 3, cex = 0.8)
+
+mcp3 <- barplot(sscore_mancp$total, names.arg  = mancp1, cex.names = 0.7, main = "Total number of times they are being tweeted")
+text(mcp3, y =sscore_mancp$total, label=sscore_mancp$total, col="blue",pos = 3, cex = 0.8)
+
+mcp4 <- barplot(sscore_mancp$overall, names.arg  = mancp1, cex.names = 0.7, main = "Relative percentage of tweet scores")
+text(mcp4, y =sscore_mancp$overall, label=sscore_mancp$overall, col="blue",pos = 3, cex = 0.8)
+
+pie(sscore_mancp$positive,labels = mancp1, radius = 1)
+pie(sscore_mancp$negative,labels = mancp1, radius = 1)
+pie(sscore_mancp$total,labels = mancp1, radius = 1)
+pie(sscore_mancp$overall,labels = mancp1, radius = 1)
+```
+## Team
+```{r}
+# with in a team
+## manutd
+
+mu1 <- barplot(sscore_manu$positive, names.arg  = manu1, cex.names = 0.7, main = "Total Positive they are being tweeted")
+text(mu1, y =sscore_manu$positive, label=sscore_manu$positive, col="red",pos = 3, cex = 0.8)
+
+mu2 <- barplot(sscore_manu$negative, names.arg  = manu1, cex.names = 0.7,main = "Total Negative they are being tweeted")
+text(mu2, y =sscore_manu$negative, label=sscore_manu$negative, col="red",pos = 3, cex = 0.8)
+
+mu3 <- barplot(sscore_manu$total, names.arg  = manu1, cex.names = 0.7, main = "Total number of times they are being tweeted")
+text(mu3, y =sscore_manu$total, label=sscore_manu$total, col="red",pos = 3, cex = 0.8)
+
+
+mu4 <- barplot(sscore_manu$overall, names.arg  = manu1, cex.names = 0.7, main = "Relative percentage of tweet scores")
+text(mu4, y =sscore_manu$overall, label=sscore_manu$overall, col="red",pos = 3, cex = 0.8)
+
+# Pos vs neg
+manu_sum <- c(manu.ttpos, manu.ttneg)
+sent <- c("Total Positive", "Total Negative")
+pie(manu_sum, labels = sent, explode=0.0, main="Sentiment Analysis")
+
+# percentage positive
+pie(sscore_manu$positive, labels = sscore_manu$team, main="Positive Words with Each #Hashtag")
+
+# percentage negative
+pie(sscore_manu$negative, labels = sscore_manu$team ,main="Negative Words with Each #Hashtag")
+
+# total
+pie(sscore_manu$total, labels = sscore_manu$team, main="Total tweeted")
+# percentage
+pie(sscore_manu$overall, labels = sscore_manu$team, main="Relative percentage")
+
+
+
+## mancity
+
+mc1 <- barplot(sscore_manc$positive, names.arg  = manc1, cex.names = 0.7,main = "Total Positive they are being tweeted")
+text(mc1, y =sscore_manc$positive, label=sscore_manc$positive, col="blue",pos = 3, cex = 0.8)
+
+mc2 <- barplot(sscore_manc$negative, names.arg  = manc1, cex.names = 0.7,main = "Total Negative they are being tweeted")
+text(mc2, y =sscore_manc$negative, label=sscore_manc$negative, col="blue",pos = 3, cex = 0.8)
+
+mc3 <- barplot(sscore_manc$total, names.arg  = manc1, cex.names = 0.7, main = "Total number of times they are being tweeted")
+text(mc3, y =sscore_manc$total, label=sscore_manc$total, col="blue",pos = 3, cex = 0.8)
+
+mc4 <- barplot(sscore_manc$overall, names.arg  = manc1, cex.names = 0.7, main = "Relative percentage of tweet scores")
+text(mc4, y =sscore_manc$overall, label=sscore_manc$overall, col="blue",pos = 3, cex = 0.8)
+manc_sum <- c(manc.ttpos, manc.ttneg)
+
+
+sent <- c("Positive", "Negative")
+pie(manc_sum, labels = sent, explode=0.0, main="Sentiment Analysis")
+
+# percentage positive
+pie(sscore_manc$positive, labels = sscore_manc$team, main="Positive Words with Each #Hashtag")
+
+# percentage negative
+pie(sscore_manc$negative, labels = sscore_manc$team ,main="Negative Words with Each #Hashtag")
+
+# mean score
+pie(sscore_manc$total, labels = sscore_manc$team, main="Total tweeted")
+# relative percentage
+pie(sscore_manc$overall, labels = sscore_manc$team, main="Total tweeted")
+
+```
+
+## Head to head
+
+```{r}
+## pie chart 
+
+#mancity vs manu total positive
+h2hpos <- c(sumderby[1,2],sumderby[2,2])
+sent <- c("ManUtd", "ManCity")
+pie(h2hpos, labels = sent, explode=0.0, main="Relative Total Positive words")
+
+## ggplot 
+ggplot(derby, aes(x=class, y=positive, fill=class))+
+  geom_boxplot()+
+  stat_summary(fun.y=mean, geom="point", shape=3, size=2)+
+  xlab("Team") + ylab("Total count") +
+  guides(fill=guide_legend(title="Team")) 
+
+testpos <- list()
+testpos[[1]] <- t.test(derby$positive~derby$class)
+tp <- sapply(testpos,function(x) {
+    c(x$estimate[1],
+      x$estimate[2],
+      ci.lower=x$conf.int[1],
+      ci.upper=x$conf.int[2],
+      p.value=x$p.value)
+})
+tp <-  as.data.frame(tp)
+colnames(tp) <- c("Stats")
+
+tp
+
+```
+
+```{r}
+h2hneg <- c(sumderby[1,3],sumderby[2,3])
+sent <- c("ManUtd", "ManCity")
+pie(h2hneg, labels = sent, explode=0.0, main="Relative Total Negative words")
+
+ggplot(derby, aes(x=class, y=negative, fill= class))+
+  geom_boxplot() +
+  stat_summary(fun.y=mean, geom="point", shape=3, size=2)+
+  xlab("Team") + ylab("Total count")+
+  guides(fill=guide_legend(title="Team"))
+
+testneg <- list()
+testneg[[1]] <- t.test(derby$negative~derby$class)
+tn <- sapply(testneg,function(x) {
+    c(x$estimate[1],
+      x$estimate[2],
+      ci.lower=x$conf.int[1],
+      ci.upper=x$conf.int[2],
+      p.value=x$p.value)
+})
+tn <-  as.data.frame(tn)
+colnames(tn) <- c("Stats")
+tn
+
+```
+
+```{r}
+  
+h2hpct <- c(sumderby[1,4],sumderby[2,4])
+sent <- c("ManUtd", "ManCity")
+pie(h2hpct, labels = sent, explode=0.0, main="Relative Percentage of Positive words")
+
+ggplot(derby, aes(x=class, y=overall, fill =class))+
+  geom_boxplot()+
+  stat_summary(fun.y=mean, geom="point", shape=3, size=2)+
+  xlab("Team") + ylab("relative percentage")+
+  guides(fill=guide_legend(title="Team"))
+
+testov <- list()
+testov[[1]] <- t.test(derby$overall~derby$class)
+tov <- sapply(testov,function(x) {
+    c(x$estimate[1],
+      x$estimate[2],
+      ci.lower=x$conf.int[1],
+      ci.upper=x$conf.int[2],
+      p.value=x$p.value)
+})
+tov <-  as.data.frame(tov)
+colnames(tov) <- c("Stats")
+tov
+
+
+
+```
+```{r}
+# make summary table
+ttesttable <- cbind(c("Mean in group ManUtd","Mean in group ManCity","95% CI lower for Mean difference","95% CI Upper for Mean difference","P-value for Mean difference"),tp,tn,tov)
+colnames(ttesttable) <- c("Type","positive","negative","overall")
+```
+
+```{r}
+save(sscore_manc, file="sscore_manc.rda")
+load("sscore_manc.rda")
+```
+
