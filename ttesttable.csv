@@ -1,0 +1,6 @@
+"","Type","positive","negative","overall"
+"mean in group mancity","Mean in group ManUtd",1019,233.8,82.2
+"mean in group manutd","Mean in group ManCity",391.2,182.2,80
+"ci.lower","95% CI lower for Mean difference",-822.229220769083,-309.157918175562,-21.6859926476498
+"ci.upper","95% CI Upper for Mean difference",2077.82922076908,412.357918175562,26.0859926476498
+"p.value","P-value for Mean difference",0.318562538980624,0.747701239952434,0.832479523764221
