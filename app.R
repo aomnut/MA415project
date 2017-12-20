@@ -1,7 +1,15 @@
 library(shiny)
 library(ggplot2)
-xlist = colnames(iris)
-ylist = colnames(iris)
+
+sscore_manc <- read.csv("sscore_manc.csv")
+sscore_mancp- read.csv("sscore_mancp.csv")
+sscore_manu <- read.csv("sscore_manu.csv")
+sscore_manup <- read.csv("sscore_manup.csv")
+sumderby <- read.csv("sumderby.csv")
+derby <- read.csv("derby.csv")
+ttesttable <- read.csv("testtable.csv")
+
+
 ui <- shinyUI(fluidPage(
   titlePanel("Welcome to Manchester"),
   navbarPage(title = "CONTENT",
@@ -362,5 +370,6 @@ server <- shinyServer(function(input, output) {
   
 
 # Run the application 
+
 shinyApp(ui = ui, server = server)
 
