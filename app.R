@@ -1,8 +1,7 @@
 library(shiny)
 library(ggplot2)
 
-
-
+load("data_epl_final.RData")
 ui <- shinyUI(fluidPage(
   titlePanel("Welcome to Manchester"),
   navbarPage(title = "CONTENT",
@@ -189,6 +188,9 @@ ui <- shinyUI(fluidPage(
 
 # Define server logic required to draw a histogram
 server <- shinyServer(function(input, output) {
+  
+  
+ 
   
   
 ###man u
